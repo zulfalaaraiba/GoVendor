@@ -1,0 +1,6 @@
+{
+  "name": "GoVendor",
+  "description": "Marketplace Vendor Event Premium di Indonesia dengan Smart Calendar AI, AI Event Planner, dan Anti Double Booking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

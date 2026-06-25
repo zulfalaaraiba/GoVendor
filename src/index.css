@@ -1,0 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght=0,400..900;1,400..900&family=Poppins:ital,wght=0,100..900;1,100..900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Georgia", serif;
+  --font-sans: "Helvetica Neue", Arial, sans-serif;
+  --color-primary: #8B5E3C;
+  --color-primary-hover: #754F30;
+  --color-secondary: #C89B6D;
+  --color-accent: #D4AF37;
+  --color-background-warm: #FAF7F2;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-background-warm);
+  color: #1a1a1a;
+}
+
+h1, h2, h3, h4, h5, h6, .font-serif-elegant {
+  font-family: var(--font-serif);
+}
+
+/* Beautiful Artistic Flair background pattern */
+.bg-batik-subtle {
+  position: relative;
+}
+
+.bg-batik-subtle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: url('data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cpath d="M30 0l15 30-15 30-15-30z" fill="%238B5E3C" fill-rule="evenodd"/%3E%3C/svg%3E');
+  background-repeat: repeat;
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Gold foil premium borders */
+.border-gold {
+  border-color: var(--color-accent);
+}
+
+.text-gold {
+  color: var(--color-accent);
+}
+
+.gradient-gold {
+  background: linear-gradient(135deg, #8B5E3C 0%, #C89B6D 50%, #D4AF37 100%);
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
