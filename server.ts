@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -167,9 +168,31 @@ async function startServer() {
     });
   });
 
+  // UPDATE VENDOR SUBSCRIPTION TIER
+  app.patch("/api/vendors/:id/subscription", (req, res) => {
+    const { subscriptionTier } = req.body;
+    if (!subscriptionTier) {
+      return res.status(400).json({ error: "subscriptionTier harus dikirim" });
+    }
+
+    const db = getDB();
+    const vIdx = db.vendors.findIndex(v => v.id === req.params.id);
+    if (vIdx === -1) {
+      return res.status(404).json({ error: "Vendor tidak ditemukan" });
+    }
+
+    db.vendors[vIdx].subscriptionTier = subscriptionTier;
+    saveDB(db);
+
+    res.json({
+      message: `Berhasil meningkatkan status langganan ke ${subscriptionTier}`,
+      vendor: db.vendors[vIdx]
+    });
+  });
+
   // BOOKING API (With Smart Calendar & Anti Double Booking)
   app.post("/api/bookings", (req, res) => {
-    const { userId, vendorId, date, eventName, notes } = req.body;
+    const { userId, vendorId, date, eventName, notes, proofFileUrl, proofFileName } = req.body;
     if (!userId || !vendorId || !date || !eventName) {
       return res.status(400).json({ error: "Data booking tidak lengkap" });
     }
@@ -187,7 +210,7 @@ async function startServer() {
     const activeClash = db.bookings.find(b => 
       b.vendorId === vendorId && 
       b.date === requestedDate && 
-      (b.status === "CONFIRMED" || b.status === "PENDING")
+      (b.status === "CONFIRMED" || b.status === "PENDING" || b.status === "VERIFYING" || b.status === "PROCESSING")
     );
 
     if (activeClash) {
@@ -205,6 +228,7 @@ async function startServer() {
 
     // Create the booking
     const bookingId = "bkg-" + Date.now();
+    const isDirectPaid = !!proofFileUrl;
     const newBooking: DBBooking = {
       id: bookingId,
       userId,
@@ -212,7 +236,7 @@ async function startServer() {
       date: requestedDate,
       eventName,
       totalAmount: vendor.price,
-      status: "PENDING",
+      status: isDirectPaid ? "VERIFYING" : "PENDING",
       notes,
       createdAt: new Date().toISOString()
     };
@@ -229,6 +253,8 @@ async function startServer() {
       amount: vendor.price,
       dueDate: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().split("T")[0], // 7 days from now
       status: "UNPAID",
+      proofFileUrl: proofFileUrl || undefined,
+      proofFileName: proofFileName || undefined,
       createdAt: new Date().toISOString()
     };
 
@@ -255,6 +281,7 @@ async function startServer() {
         vendorName: vendor ? vendor.businessName : "Vendor Terhapus",
         vendorCategory: vendor ? vendor.category : "-",
         vendorImage: vendor ? vendor.imageUrl : "",
+        vendorUserId: vendor ? vendor.userId : "",
         invoice
       };
     });
@@ -291,6 +318,14 @@ async function startServer() {
 
     db.bookings[bIdx].status = status as any;
     
+    // Auto pay corresponding invoice if confirmed
+    if (status === "CONFIRMED") {
+      const invIdx = db.invoices.findIndex(inv => inv.bookingId === req.params.id);
+      if (invIdx !== -1) {
+        db.invoices[invIdx].status = "PAID";
+      }
+    }
+    
     // If cancelled, update corresponding invoice to overdue/cancelled or stay unpaid
     if (status === "CANCELLED") {
       const invIdx = db.invoices.findIndex(inv => inv.bookingId === req.params.id);
@@ -323,6 +358,29 @@ async function startServer() {
     res.json(invoices);
   });
 
+  app.post("/api/invoices/:id/upload-proof", (req, res) => {
+    const { proofFileUrl, proofFileName } = req.body;
+    if (!proofFileUrl || !proofFileName) {
+      return res.status(400).json({ error: "File bukti pembayaran harus disertakan" });
+    }
+
+    const db = getDB();
+    const invIdx = db.invoices.findIndex(inv => inv.id === req.params.id);
+    if (invIdx === -1) return res.status(404).json({ error: "Invoice tidak ditemukan" });
+
+    db.invoices[invIdx].proofFileUrl = proofFileUrl;
+    db.invoices[invIdx].proofFileName = proofFileName;
+
+    // Auto set booking to VERIFYING
+    const bIdx = db.bookings.findIndex(b => b.id === db.invoices[invIdx].bookingId);
+    if (bIdx !== -1) {
+      db.bookings[bIdx].status = "VERIFYING";
+    }
+
+    saveDB(db);
+    res.json({ message: "Bukti pembayaran berhasil diunggah", invoice: db.invoices[invIdx] });
+  });
+
   app.post("/api/invoices/:id/pay", (req, res) => {
     const db = getDB();
     const invIdx = db.invoices.findIndex(inv => inv.id === req.params.id);
@@ -342,7 +400,7 @@ async function startServer() {
 
   // REVIEWS API
   app.post("/api/reviews", (req, res) => {
-    const { userId, vendorId, rating, comment } = req.body;
+    const { userId, vendorId, rating, comment, userName } = req.body;
     if (!userId || !vendorId || !rating || !comment) {
       return res.status(400).json({ error: "Data review tidak lengkap" });
     }
@@ -354,7 +412,7 @@ async function startServer() {
     const newReview = {
       id: reviewId,
       userId,
-      userName: user ? user.name : "Klien GoVendor",
+      userName: userName || (user ? user.name : "Klien GoVendor"),
       vendorId,
       rating: Number(rating),
       comment,
@@ -404,7 +462,109 @@ async function startServer() {
 
     db.chats.push(newMsg);
     saveDB(db);
+
+    // AI AUTO-RESPONDER FOR SUBSCRIBED VENDORS (SILVER/GOLD)
+    const targetVendor = db.vendors.find(v => v.userId === receiverId);
+    if (targetVendor && (targetVendor.subscriptionTier === "SILVER" || targetVendor.subscriptionTier === "GOLD")) {
+      const clientUser = db.users.find(u => u.id === senderId);
+      const clientName = clientUser ? clientUser.name : "Klien";
+      
+      // Trigger reply with simulated delay of 2.5 seconds
+      setTimeout(async () => {
+        const liveDb = getDB();
+        const ai = getAI();
+        let replyText = "";
+
+        if (ai) {
+          try {
+            const prompt = `Anda adalah perwakilan resmi dari "${targetVendor.businessName}", penyedia jasa ${targetVendor.category} premium di GoVendor (lokasi: ${targetVendor.location}, harga mulai dari: ${formatIDR(targetVendor.price)}). 
+Klien bernama "${clientName}" mengirimkan pesan obrolan berikut kepada Anda: "${message}".
+Berikan balasan pesan obrolan yang ramah, sopan, solutif, dan profesional dalam Bahasa Indonesia untuk membantu klien tersebut merencanakan pernikahannya.
+
+PENTING:
+1. Jangan sebutkan bahwa Anda adalah robot atau asisten AI. Berperanlah 100% sebagai tim perwakilan resmi dari "${targetVendor.businessName}".
+2. Jangan menambahkan label apa pun seperti "[AI Auto Reply]" atau "[Asisten AI]" atau "[Vendor AI]". Jawab secara langsung dan alami layaknya chat biasa.
+3. Jangan menggunakan kurung siku atau penjelasan sistem. Jawab langsung pesan klien dengan solusi, sapaan hangat, dan kelanjutan rencana mereka.`;
+
+            const aiResponse = await ai.models.generateContent({
+              model: "gemini-2.5-flash",
+              contents: prompt,
+            });
+
+            if (aiResponse && aiResponse.text) {
+              replyText = aiResponse.text.trim();
+            }
+          } catch (e) {
+            console.error("Gagal generate vendor AI reply:", e);
+          }
+        }
+
+        // Fallback Heuristics in Indonesian
+        if (!replyText) {
+          const lowerMsg = message.toLowerCase();
+          if (lowerMsg.includes("harga") || lowerMsg.includes("biaya") || lowerMsg.includes("tarif") || lowerMsg.includes("budget") || lowerMsg.includes("dana") || lowerMsg.includes("anggaran")) {
+            replyText = `Halo Kak ${clientName}! Terima kasih telah menghubungi kami. Paket jasa ${targetVendor.category} di "${targetVendor.businessName}" dimulai dari ${formatIDR(targetVendor.price)}. Kami juga menyediakan opsi kustomisasi sesuai budget impian Kakak. Apakah ada preferensi khusus yang ingin dikonsultasikan?`;
+          } else if (lowerMsg.includes("tanggal") || lowerMsg.includes("jadwal") || lowerMsg.includes("pemberkatan") || lowerMsg.includes("akad") || lowerMsg.includes("resepsi") || lowerMsg.includes("tgl")) {
+            replyText = `Halo Kak ${clientName}! Terkait ketersediaan tanggal tersebut, kami akan segera melakukan verifikasi ke Smart Calendar tim lapangan kami. Mohon ditunggu sebentar ya kak, slot untuk musim wedding ini sangat terbatas!`;
+          } else if (lowerMsg.includes("lokasi") || lowerMsg.includes("alamat") || lowerMsg.includes("dimana") || lowerMsg.includes("wilayah")) {
+            replyText = `Halo Kak ${clientName}! Studio/kantor kami berpusat di daerah ${targetVendor.location}, namun kami sangat berpengalaman dalam menangani project luar kota. Untuk acara Kakak nanti direncanakan di daerah mana ya?`;
+          } else if (lowerMsg.includes("hai") || lowerMsg.includes("halo") || lowerMsg.includes("pagi") || lowerMsg.includes("siang") || lowerMsg.includes("sore") || lowerMsg.includes("malam")) {
+            replyText = `Halo Kak ${clientName}! Selamat datang di layanan chat resmi "${targetVendor.businessName}". Kami siap membantu mewujudkan konsep ${targetVendor.category} terbaik untuk hari spesial Kakak. Ada yang bisa kami bantu jelaskan hari ini?`;
+          } else {
+            replyText = `Terima kasih atas pesannya Kak ${clientName}! Pesan Kakak sudah kami terima dengan baik. Tim perencanaan katering/dekorasi kami akan segera memberikan penjelasan rincian penawaran terbaik khusus untuk Kakak. Apakah ada detail konsep atau tema yang sudah terpikirkan sebelumnya?`;
+          }
+        }
+
+        const autoMsg: DBChatMessage = {
+          id: "msg-" + Date.now(),
+          senderId: receiverId, // vendor is sender
+          receiverId: senderId, // client is receiver
+          message: replyText,
+          createdAt: new Date().toISOString()
+        };
+
+        const reloadedDb = getDB();
+        reloadedDb.chats.push(autoMsg);
+        saveDB(reloadedDb);
+        console.log(`[AI Auto Responder] Sent AI reply from ${targetVendor.businessName} to ${clientName}`);
+      }, 2500);
+    }
+
     res.status(201).json(newMsg);
+  });
+
+  app.get("/api/chats/conversations/:userId", (req, res) => {
+    const { userId } = req.params;
+    const db = getDB();
+    const userChats = db.chats.filter(c => c.senderId === userId || c.receiverId === userId);
+    
+    const otherIds = Array.from(new Set(userChats.map(c => c.senderId === userId ? c.receiverId : c.senderId)));
+    
+    const conversations = otherIds.map(otherId => {
+      const otherUser = db.users.find(u => u.id === otherId);
+      const otherVendor = db.vendors.find(v => v.userId === otherId || v.id === otherId);
+      
+      const participantName = otherVendor?.businessName || otherUser?.name || "Mitra GoVendor";
+      const participantImage = otherVendor?.imageUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150";
+      const participantCategory = otherVendor?.category || (otherUser?.role === "ADMIN" ? "Admin" : "Klien");
+
+      const history = userChats.filter(c => c.senderId === otherId || c.receiverId === otherId)
+        .sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      
+      const lastMessage = history[history.length - 1];
+
+      return {
+        otherId,
+        name: participantName,
+        imageUrl: participantImage,
+        category: participantCategory,
+        lastMessageText: lastMessage ? lastMessage.message : "",
+        lastMessageTime: lastMessage ? lastMessage.createdAt : new Date().toISOString(),
+        unreadCount: lastMessage && lastMessage.senderId !== userId ? 1 : 0
+      };
+    }).sort((a,b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime());
+
+    res.json(conversations);
   });
 
   // ADMIN DASHBOARD STATISTICS
@@ -422,6 +582,8 @@ async function startServer() {
     // Map bookings status count
     const statusCounts = {
       PENDING: db.bookings.filter(b => b.status === "PENDING").length,
+      VERIFYING: db.bookings.filter(b => b.status === "VERIFYING").length,
+      PROCESSING: db.bookings.filter(b => b.status === "PROCESSING").length,
       CONFIRMED: db.bookings.filter(b => b.status === "CONFIRMED").length,
       CANCELLED: db.bookings.filter(b => b.status === "CANCELLED").length,
       COMPLETED: db.bookings.filter(b => b.status === "COMPLETED").length,
@@ -445,18 +607,46 @@ async function startServer() {
       return res.status(400).json({ error: "Pesan chat harus dikirim" });
     }
 
+    // Limit chat history to 50 bubble chats
+    if (messages.length > 50) {
+      return res.status(400).json({ error: "Batas maksimum 50 bubble chat telah tercapai." });
+    }
+
     const ai = getAI();
     if (!ai) {
-      // Mock elegant fallback
+      // Mock elegant fallback with advanced keyword heuristic matching in Indonesian
       const lastUserMsg = messages[messages.length - 1].text.toLowerCase();
-      let reply = "Halo! Saya adalah Asisten AI Perencana Acara GoVendor. Saya siap membantu Anda mempersiapkan pernikahan atau event premium Anda dengan sempurna. Silakan tanyakan seputar estimasi budget, timeline acara, atau rekomendasi vendor terbaik.";
-      if (lastUserMsg.includes("budget") || lastUserMsg.includes("biaya")) {
-        reply = "Untuk merencanakan budget event, saya merekomendasikan pembagian alokasi dana: 40% Catering, 25% Dekorasi & Tenda, 15% Gedung, 10% Wedding Organizer, 5% Busana & Makeup, dan 5% Dokumentasi/Entertainment. GoVendor menyediakan AI Budget Planner otomatis di menu dashboard Anda untuk pembagian yang lebih detail!";
-      } else if (lastUserMsg.includes("tanggal") || lastUserMsg.includes("booking") || lastUserMsg.includes("jadwal")) {
-        reply = "Sistem kami terintegrasi dengan Smart Calendar AI. Jika vendor favorit Anda sudah penuh pada tanggal pilihan Anda, asisten AI kami akan otomatis mendeteksi bentrokan jadwal dan memberikan 3 rekomendasi vendor alternatif premium sejenis secara instan. Sangat praktis dan bebas ribet!";
-      } else if (lastUserMsg.includes("rekomendasi") || lastUserMsg.includes("cari vendor")) {
-        reply = "Di GoVendor, kami mengurasi vendor Wedding Organizer, Catering, Fotografer, MC, hingga Dekorasi terbaik yang tersertifikasi. Untuk rekomendasi personal, silakan beritahu saya jenis acara, lokasi, dan budget yang Anda miliki.";
+      let reply = "";
+
+      if (lastUserMsg.includes("budget") || lastUserMsg.includes("biaya") || lastUserMsg.includes("dana") || lastUserMsg.includes("anggaran") || lastUserMsg.includes("harga") || lastUserMsg.includes("tarif")) {
+        reply = "Untuk merencanakan budget event, saya merekomendasikan alokasi dana ideal: 40% Catering/Konsumsi, 20% Dekorasi & Pelaminan, 15% Sewa Gedung/Hotel, 10% Wedding Organizer, 5% Busana & Makeup, dan 10% Dokumentasi, MC & Hiburan. Anda juga dapat menggunakan tab 'AI Budget Planner' di atas untuk menghitung pembagian rincian otomatis berdasarkan budget Anda secara instan!";
+      } else if (lastUserMsg.includes("tanggal") || lastUserMsg.includes("booking") || lastUserMsg.includes("jadwal") || lastUserMsg.includes("pemberkatan") || lastUserMsg.includes("akad")) {
+        reply = "Sistem kami terintegrasi dengan Smart Calendar AI. Jika vendor favorit Anda penuh di tanggal pilihan, sistem kami otomatis mendeteksi bentrokan jadwal dan merekomendasikan 3 vendor alternatif sejenis yang memiliki rating tinggi secara instan. Sangat praktis!";
+      } else if (lastUserMsg.includes("rekomendasi") || lastUserMsg.includes("rekomdasi") || lastUserMsg.includes("recom") || lastUserMsg.includes("carikan") || lastUserMsg.includes("cari") || lastUserMsg.includes("vendor") || lastUserMsg.includes("pilih")) {
+        let locMsg = "";
+        if (lastUserMsg.includes("semarang")) {
+          locMsg = " khusus di Kota Semarang (seperti hotel-hotel ikonik di Semarang dan katering Nyonya Semarang)";
+        } else if (lastUserMsg.includes("solo")) {
+          locMsg = " di Solo";
+        } else if (lastUserMsg.includes("bandung")) {
+          locMsg = " di Bandung";
+        } else if (lastUserMsg.includes("jakarta")) {
+          locMsg = " di Jakarta";
+        }
+        
+        reply = `Tentu! Saya merekomendasikan beberapa vendor terbaik${locMsg} yang terkurasi dan terpercaya di platform kami. Untuk Wedding Organizer premium ada 'Citra Wedding Planner', untuk catering lezat ada 'Katering Nyonya Semarang', dan untuk dokumentasi ada 'Amarta Photography'. Anda bisa melihat profil lengkap, galeri portofolio, dan rating mereka langsung di katalog utama!`;
+      } else if (lastUserMsg.includes("semarang") || lastUserMsg.includes("solo") || lastUserMsg.includes("bandung") || lastUserMsg.includes("jakarta")) {
+        reply = `Kawasan tersebut memiliki banyak sekali vendor premium yang tergabung di GoVendor. Kami memiliki filter wilayah pada halaman katalog utama untuk memudahkan pencarian Anda. Apakah Anda sedang mencari kategori spesifik seperti Catering atau Dekorator di wilayah ${lastUserMsg.includes("semarang") ? "Semarang" : lastUserMsg.includes("solo") ? "Solo" : "Bandung"}?`;
+      } else if (lastUserMsg.includes("hotel") || lastUserMsg.includes("gedung") || lastUserMsg.includes("venue") || lastUserMsg.includes("aula")) {
+        reply = "Mengadakan acara di Hotel atau Venue khusus memberikan kenyamanan maksimal bagi tamu Anda. Banyak vendor katering dan dekorasi kami yang sudah terbiasa bekerjasama dengan hotel-hotel berbintang. Apakah Anda ingin saya rekomendasikan paket katering buffet khusus hotel?";
+      } else if (lastUserMsg.includes("hai") || lastUserMsg.includes("hello") || lastUserMsg.includes("halo") || lastUserMsg.includes("pagi") || lastUserMsg.includes("siang") || lastUserMsg.includes("sore") || lastUserMsg.includes("malam")) {
+        reply = "Halo! Saya adalah GoVendor AI Planner, asisten pintar senior perencanaan event & pernikahan premium di Indonesia. Ada yang bisa saya bantu hari ini? Anda bisa menanyakan seputar perkiraan anggaran, rekomendasi vendor, koordinasi rundown, atau mencoba tab 'AI Budget Planner'!";
+      } else if (lastUserMsg.includes("party") || lastUserMsg.includes("pesta") || lastUserMsg.includes("ulang tahun") || lastUserMsg.includes("event") || lastUserMsg.includes("nikah") || lastUserMsg.includes("pernikahan")) {
+        reply = "Menyenangkan sekali merencanakan acara spesial Anda! Kunci utama kesuksesan event adalah menentukan konsep/tema, tanggal yang aman, serta menyewa Wedding/Event Organizer berpengalaman sejak awal. Bagaimana saya bisa membantu Anda memulai?";
+      } else {
+        reply = "Saya memahami pertanyaan Anda mengenai persiapan acara. Di GoVendor, kami menyediakan solusi lengkap untuk menyewa vendor terbaik, mengatur Smart Calendar, serta menghitung alokasi biaya lewat tab 'AI Budget Planner'. Ada hal spesifik seputar dekorasi, catering, atau WO yang ingin Anda tanyakan?";
       }
+
       return res.json({ text: reply, simulated: true });
     }
 

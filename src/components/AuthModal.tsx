@@ -1,25 +1,45 @@
 import React, { useState } from "react";
 import { X, Mail, Lock, User as UserIcon, Briefcase, MapPin, Tag } from "lucide-react";
 import { User } from "../types";
+import { Logo } from "./Logo";
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onLoginSuccess: (user: User) => void;
+  initialTab?: "login" | "register";
+  initialRole?: "USER" | "VENDOR" | "ADMIN";
 }
 
-export function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
+export function AuthModal({ isOpen, onClose, onLoginSuccess, initialTab, initialRole }: AuthModalProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState<"USER" | "VENDOR">("USER");
+  const [role, setRole] = useState<"USER" | "VENDOR" | "ADMIN">("USER");
   const [businessName, setBusinessName] = useState("");
   const [category, setCategory] = useState("Wedding Organizer");
   const [price, setPrice] = useState("");
   const [location, setLocation] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Sync state when modal is opened
+  React.useEffect(() => {
+    if (isOpen) {
+      setIsLogin(initialTab === "register" ? false : true);
+      setRole(initialRole || "USER");
+      // reset fields
+      setEmail("");
+      setPassword("");
+      setName("");
+      setBusinessName("");
+      setCategory("Wedding Organizer");
+      setPrice("");
+      setLocation("");
+      setError("");
+    }
+  }, [isOpen, initialTab, initialRole]);
 
   if (!isOpen) return null;
 
@@ -100,8 +120,14 @@ export function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-secondary/20 relative">
+    <div 
+      className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in cursor-pointer"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-secondary/20 relative cursor-default"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header Background Modern Batik Accent */}
         <div className="h-3 gradient-gold w-full" />
 
@@ -114,10 +140,8 @@ export function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
 
         <div className="p-8">
           <div className="text-center mb-6">
-            <span className="font-serif text-3xl font-semibold tracking-wider text-primary">
-              Go<span className="text-accent">Vendor</span>
-            </span>
-            <p className="text-xs text-gray-500 mt-1">Marketplace Vendor Event Premium & AI Assistant</p>
+            <Logo size={42} showText={true} className="justify-center" textClass="font-serif text-2xl md:text-3xl font-black tracking-widest" />
+            <p className="text-xs text-gray-500 mt-1.5">Marketplace Vendor Event Premium & AI Assistant</p>
           </div>
 
           <div className="flex bg-background-warm p-1 rounded-lg mb-6">
@@ -169,28 +193,39 @@ export function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">Mendaftar Sebagai</label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => setRole("USER")}
-                      className={`py-2.5 text-sm rounded-lg border font-medium transition ${
+                      className={`py-2 text-xs rounded-lg border font-medium transition ${
                         role === "USER"
                           ? "border-primary bg-primary/10 text-primary font-bold"
                           : "border-secondary/20 text-gray-600 hover:bg-background-warm"
                       }`}
                     >
-                      Pencari Vendor (Client)
+                      Customer
                     </button>
                     <button
                       type="button"
                       onClick={() => setRole("VENDOR")}
-                      className={`py-2.5 text-sm rounded-lg border font-medium transition ${
+                      className={`py-2 text-xs rounded-lg border font-medium transition ${
                         role === "VENDOR"
                           ? "border-primary bg-primary/10 text-primary font-bold"
                           : "border-secondary/20 text-gray-600 hover:bg-background-warm"
                       }`}
                     >
-                      Penyedia Jasa (Vendor)
+                      Vendor
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRole("ADMIN")}
+                      className={`py-2 text-xs rounded-lg border font-medium transition ${
+                        role === "ADMIN"
+                          ? "border-primary bg-primary/10 text-primary font-bold"
+                          : "border-secondary/20 text-gray-600 hover:bg-background-warm"
+                      }`}
+                    >
+                      Admin
                     </button>
                   </div>
                 </div>
@@ -252,7 +287,7 @@ export function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
                         <input
                           type="text"
                           required
-                          placeholder="Contoh: Jakarta Selatan, Bandung"
+                          placeholder="Contoh: Semarang, Bandung"
                           className="w-full pl-9 pr-3 py-2 bg-white border border-secondary/20 rounded-lg text-xs focus:outline-none focus:border-primary"
                           value={location}
                           onChange={(e) => setLocation(e.target.value)}

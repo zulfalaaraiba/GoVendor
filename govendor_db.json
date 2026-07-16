@@ -182,6 +182,17 @@
       "status": "PENDING",
       "notes": "Tamu undangan diperkirakan 500 orang.",
       "createdAt": "2026-06-24T18:05:10.922Z"
+    },
+    {
+      "id": "bkg-1784160020046",
+      "userId": "usr-1784157394830",
+      "vendorId": "vnd-melodi",
+      "date": "2026-07-24",
+      "eventName": "p",
+      "totalAmount": 5000000,
+      "status": "CONFIRMED",
+      "notes": "p",
+      "createdAt": "2026-07-16T00:00:20.046Z"
     }
   ],
   "reviews": [
@@ -222,6 +233,15 @@
       "dueDate": "2026-08-01",
       "status": "UNPAID",
       "createdAt": "2026-06-24T18:05:10.922Z"
+    },
+    {
+      "id": "inv-1784160020046",
+      "bookingId": "bkg-1784160020046",
+      "invoiceNumber": "INV/2026/07/6430",
+      "amount": 5000000,
+      "dueDate": "2026-07-23",
+      "status": "PAID",
+      "createdAt": "2026-07-16T00:00:20.047Z"
     }
   ],
   "chats": [
@@ -238,6 +258,27 @@
       "receiverId": "usr-budi",
       "message": "Halo Mas Budi! Betul sekali, untuk tanggal tersebut kami sudah terbooking oleh klien lain. Namun kami memiliki rekomendasi tanggal 12 atau 19 Juli yang masih kosong, atau kami bisa bantu rekomendasikan partner WO premium lainnya.",
       "createdAt": "2026-06-24T17:35:10.922Z"
+    },
+    {
+      "id": "msg-1784160042834",
+      "senderId": "usr-1784157394830",
+      "receiverId": "usr-melodi",
+      "message": "saya sudah lunas",
+      "createdAt": "2026-07-16T00:00:42.834Z"
+    },
+    {
+      "id": "msg-1784160106696",
+      "senderId": "usr-1784157394830",
+      "receiverId": "usr-melodi",
+      "message": "saya sudah lunas",
+      "createdAt": "2026-07-16T00:01:46.696Z"
+    },
+    {
+      "id": "msg-1784161415244",
+      "senderId": "usr-1784157394830",
+      "receiverId": "usr-melodi",
+      "message": "pesanan saya sudah lunas",
+      "createdAt": "2026-07-16T00:23:35.244Z"
     }
   ]
 }

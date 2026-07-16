@@ -17,6 +17,7 @@ export interface Vendor {
   rating: number;
   location: string;
   isVerified: boolean;
+  subscriptionTier?: "BASIC" | "SILVER" | "GOLD";
   bookedDates?: string[];
   portfolio?: string[];
   reviews?: Review[];
@@ -29,11 +30,12 @@ export interface Booking {
   date: string;
   eventName: string;
   totalAmount: number;
-  status: "PENDING" | "CONFIRMED" | "CANCELLED" | "COMPLETED";
+  status: "PENDING" | "VERIFYING" | "PROCESSING" | "CONFIRMED" | "CANCELLED" | "COMPLETED";
   notes?: string;
   vendorName?: string;
   vendorCategory?: string;
   vendorImage?: string;
+  vendorUserId?: string;
   clientName?: string;
   clientEmail?: string;
   invoice?: Invoice;
@@ -61,6 +63,8 @@ export interface Invoice {
   vendorName?: string;
   eventDate?: string;
   createdAt: string;
+  proofFileUrl?: string;
+  proofFileName?: string;
 }
 
 export interface ChatMessage {
@@ -71,6 +75,18 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+export interface CartItem {
+  id: string;
+  vendorId: string;
+  vendorName: string;
+  vendorCategory: string;
+  vendorImage: string;
+  price: number;
+  date: string;
+  eventName: string;
+  notes?: string;
+}
+
 export interface AdminStats {
   totalUsers: number;
   totalVendors: number;
@@ -78,6 +94,8 @@ export interface AdminStats {
   totalRevenue: number;
   statusCounts: {
     PENDING: number;
+    VERIFYING: number;
+    PROCESSING: number;
     CONFIRMED: number;
     CANCELLED: number;
     COMPLETED: number;

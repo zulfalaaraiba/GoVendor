@@ -14,6 +14,7 @@ export function ChatModal({ isOpen, onClose, vendor, currentUser }: ChatModalPro
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isOpen && currentUser) {
@@ -24,7 +25,9 @@ export function ChatModal({ isOpen, onClose, vendor, currentUser }: ChatModalPro
   }, [isOpen, currentUser, vendor.userId]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
   }, [messages]);
 
   const fetchChatHistory = async () => {
@@ -89,7 +92,7 @@ export function ChatModal({ isOpen, onClose, vendor, currentUser }: ChatModalPro
       </div>
 
       {/* Messages List */}
-      <div className="flex-1 overflow-y-auto py-4 space-y-3 scrollbar-none pr-1">
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto py-4 space-y-3 scrollbar-none pr-1">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 p-6 space-y-2">
             <MessageCircle size={32} className="text-secondary/50" />
