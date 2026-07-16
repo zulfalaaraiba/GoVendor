@@ -47,6 +47,14 @@
       "name": "Fokus Photo",
       "role": "VENDOR",
       "createdAt": "2026-06-24T18:05:10.922Z"
+    },
+    {
+      "id": "usr-1784167289540",
+      "email": "customer@gmail.com",
+      "passwordHash": "qwertyuiop",
+      "name": "zulfa",
+      "role": "USER",
+      "createdAt": "2026-07-16T02:01:29.540Z"
     }
   ],
   "vendors": [
